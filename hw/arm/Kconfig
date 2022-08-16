@@ -297,7 +297,11 @@ config ZYNQ
     select XILINX_SPI
     select XILINX_SPIPS
     select ZYNQ_DEVCFG
-
+    select PLC_IOC
+    select PLC_WATCHDOG
+    select PLC_80280000
+    select PLC_TIMER_fffbb0ac
+    select PLC_FW_COPY
 config ARM_V7M
     bool
     # currently v7M must be included in a TCG build due to translate.c
