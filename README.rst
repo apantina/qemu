@@ -1,4 +1,92 @@
 ===========
+PROJECT README
+===========
+
+This is a fork of Xilinx's QEMU fork, used for running experiments on
+Siemens PLC firmware in an emulated environment. This work was done as part
+of a master's thesis project at the University of Zagreb, Faculty of Electrical Engineering and Computing,
+under the mentorship of Stjepan Groš, doc. dr. sc.
+
+This repository builds on the fork by adding custom QEMU devices that the Siemens S7-1200 PLC communicates
+with via its firmware and bootloader. The code which implements these devices can be found `here <https://github.com/Xilinx/qemu/compare/master...apantina:qemu:master>`_.
+
+
+Please note that this repository is published solely for educational purposes and is by no means a finished
+product.
+
+Setup
+============
+
+First, build QEMU locally using the below specified target and params.
+This will build QEMU for ARM architecture which is required for
+emulation of Siemens' S7-1200 PLC.
+
+.. code-block::
+
+  mkdir build
+  cd build
+  ../configure --target-list="aarch64-softmmu" --enable-fdt --disable-kvm --disable-xen --enable-gcrypt֒
+  make -j$(nproc)
+
+
+After building QEMU, there are some pre-requisites that need to be completed for successful emulation
+of the PLC's firmware.
+
+First, it is required to get the bootloader of the PLC itself. This can be quite tricky, but doable using a
+device such as `Bus Pirate <http://dangerousprototypes.com/docs/Bus_Pirate>`_.
+
+Once the bootloader has been acquired it is also required to get a binary of the firmware which will run on the
+emulated PLC. This can be done by `decompressing <https://gitlab.com/lgrguric/siemens_lzp3>`_ and then stripping the firmware update
+files available on Siemens' official website.
+After the firmware update file has been decompressed, the firmware needs to be extracted and stripped. TODO: provide instructions for this
+
+Finally, a device tree binary is required. The one which was used in the below example is included in the root of this fork,
+under the filename `board-zynqmp-zcu1285.dtb`. You can also compile this device tree binary
+via instructions in `this repository <https://github.com/Xilinx/qemu-devicetrees>`_, after applying the changes from
+`this gist <https://gist.github.com/apantina/38d22d43e35c2abaa69651435a6d63d6>`_.
+
+.. code-block::
+
+
+  ./build/aarch64-softmmu/qemu-system-aarch64 \
+  -M arm-generic-fdt \
+  -serial mon:stdio \
+  -device loader,
+  file=<path to stripped firmware file>,addr=0x40000,
+  cpu-num=4,force-raw=true \
+  -device loader,
+  file=<path to PLC bootloader binary>,addr=0x0
+  -device loader,addr=0XFF5E023C,data=0x80088fde,data-len=4 \
+  -device loader,addr=0xff9a0000,data=0x80000218,data-len=4 \
+  -hw-dtb <path to device tree binary> \
+  -m 4G -singlestep -d in_asm,nochain -s
+
+
+Full example:
+
+.. code-block::
+
+
+  ./build/aarch64-softmmu/qemu-system-aarch64 \
+  -M arm-generic-fdt \
+  -serial mon:stdio \
+  -device loader,
+  file=../../firmware-images/fw.stripped.rev,addr=0x40000,
+  cpu-num=4,force-raw=true \
+  -device loader,
+  file=../../bootloader_images/Siemens_1211Cv4_bootloader.bin,addr=0x0
+  -device loader,addr=0XFF5E023C,data=0x80088fde,data-len=4 \
+  -device loader,addr=0xff9a0000,data=0x80000218,data-len=4 \
+  -hw-dtb ./board-zynqmp-zcu1285.dtb \
+  -m 4G -singlestep -d in_asm,nochain -s > log.txt
+
+Note that the output of this command is is redirected to a `log.txt` file for easier navigation and searching
+after execution has finished. The output should show ARM assembly instructions of the PLC's bootloader and firmware
+being executed on the QEMU-emulated machine.
+
+
+
+===========
 QEMU README
 ===========
 
