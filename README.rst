@@ -49,8 +49,8 @@ On the actual PLC, its bootloader has the role of copying the firmware from the 
 
 
 .. image:: memory_layout.jpeg
-   :height: 800
-   :width: 600
+   :width: 801
+   :height: 787
    :alt: Memory layout diagram
     
 We need to emulate this (that is, copying the firmware to RAM) behavior. To do this, one needs to separate the different parts of the firmware update file - throw out the first 0x40 bytes (the header), save the next 0x8000 bytes in one file (exec_in_lomem), and finally save the rest in another file (main_firmware). The exec_in_lomem section is manually copied over a part of the bootloader code at address 0x0 once the bootloader itself is finished with its execution. The main_firmware section, which contains most of the firmware logic, is loaded to address 0x40000 using QEMU’s device loader.
