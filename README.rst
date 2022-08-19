@@ -29,16 +29,39 @@ emulation of Siemens' S7-1200 PLC.
   make -j$(nproc)
 
 
-After building QEMU, there are some pre-requisites that need to be completed for successful emulation
+After building QEMU, there are some prerequisites that need to be completed for successful emulation
 of the PLC's firmware.
 
 First, it is required to get the bootloader of the PLC itself. This can be quite tricky, but doable using a
-device such as `Bus Pirate <http://dangerousprototypes.com/docs/Bus_Pirate>`_.
+device such as `Bus Pirate <http://dangerousprototypes.com/docs/Bus_Pirate>`_ and an appropriate chip programming software, e.g. `flashrom <https://www.flashrom.org/Bus_Pirate>`_. Since flashrom doesn’t include support for the S7-1200 bootloader chip, one needs to modify the code to include it. It is recommended to first just add the chip ID in the flashchips.h file so the chip is recognized. Once that is done, one only needs to copy a similar chip’s configuration and add an entry in the flaschips.c file. Lastly, a very specific modification needs to be made. The parameter chunk_size in the spi_read_chunked function needs to be changed to the constant 256. Once this is done, one can connect Bus Pirate to the chip and read the contents using flashrom. 
+
+.. code-block::
+
+sudo ./flashrom -p buspirate_spi:dev=/dev/ttyUSB0,spispeed=1M --read bootloader.bin --chip <CHIP_NAME>
+
+The argument dev should be the USB port on which Bus Pirate is connected to the PC. If something goes wrong, the argument -VVV can be added to get a detailed overview of what happened
 
 Once the bootloader has been acquired it is also required to get a binary of the firmware which will run on the
-emulated PLC. This can be done by `decompressing <https://gitlab.com/lgrguric/siemens_lzp3>`_ and then stripping the firmware update
-files available on Siemens' official website.
-After the firmware update file has been decompressed, the firmware needs to be extracted and stripped. TODO: provide instructions for this
+emulated PLC. This can be done by `decompressing <https://gitlab.com/lgrguric/siemens_lzp3>`_ the firmware update files available on Siemens' official website. The firmware update file includes multiple compressed sections, and the section marked with A0000 is the one that contains the compressed firmware binary blob. 
+After the firmware update file has been decompressed (that is, the section marked with A0000), the resulting firmware needs to be rearranged. 
+
+On the actual PLC, its bootloader has the role of copying the firmware from the NAND chip on the PLC to RAM and ITCM.  The contents of the firmware on the NAND chip can be separated into 3 distinct areas - the first 0x40 bytes containing the header with firmware metadata, the following 0x8000 bytes which make up the .exec_in_lomem section, and the rest of the firmware the size of which varies, but is around 0x01100000 bytes. From these 3 areas, only the latter 2 will be copied to RAM and ITCM. For emulation purposes, RAM and ITCM can be understood to be one and the same and shall be collectively referred to as simply RAM. The following image shows how the bootloader copies the contents of the chip to RAM.
+
+
+.. image:: memory_layout.jpeg
+   :height: 800
+   :width: 600
+   :alt: Memory layout diagram
+    
+We need to emulate this (that is, copying the firmware to RAM) behavior. To do this, one needs to separate the different parts of the firmware update file - throw out the first 0x40 bytes (the header), save the next 0x8000 bytes in one file (exec_in_lomem), and finally save the rest in another file (main_firmware). The exec_in_lomem section is manually copied over a part of the bootloader code at address 0x0 once the bootloader itself is finished with its execution. The main_firmware section, which contains most of the firmware logic, is loaded to address 0x40000 using QEMU’s device loader.
+
+This exec_in_lomem copying is emulated using a separate QEMU device, in `this file <https://github.com/apantina/qemu/blob/master/hw/misc/plc_80280000.c>`_.
+The driver responsible for copying requires the path to be specified in the `EXEC_IN_LOMEM_FILENAME` identifier.
+
+Also, the endianness of both the bootloader and the firmware binaries (and the EXEC_IN_LOMEM file which is referenced later in this guide) needs to be flipped from big-endian to little-endian. This is necessary because the PLC is run in big-endian mode which is not supported by our QEMU machine. 
+Flipping the endianness is quite straightforward, and the authors of this doc used `this simple open-source tool <https://github.com/rgrahamh/byte-swapper>`_.
+After cloning the project and compiling it, it’s as easy as running `./byte_swap file.bin 32` (32-byte swap), where the file.bin file is your extracted bootloader or firmware binary. While not tested, it is presumed that swapping bytes will cause problems for some parts of the emulated firmware, e.g. where the data size is not 4 bytes.
+Additionally, the bootloader’s `setend be`assembly instruction, which sets the CPU’s endianness, needs to be changed to either `nop` or `setend le`. The simplest way to do this is to change the instruction on the location 0x1b8 (this location may vary from version to version) of the bootloader’s binary from `f1 01 02 00` to `00 00 00 00` (basically no-op) using your favorite hex editor. 
 
 Finally, a device tree binary is required. The one which was used in the below example is included in the root of this fork,
 under the filename `board-zynqmp-zcu1285.dtb`. You can also compile this device tree binary
@@ -83,6 +106,9 @@ Full example:
 Note that the output of this command is is redirected to a `log.txt` file for easier navigation and searching
 after execution has finished. The output should show ARM assembly instructions of the PLC's bootloader and firmware
 being executed on the QEMU-emulated machine.
+
+
+
 
 
 
