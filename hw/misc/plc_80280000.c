@@ -17,7 +17,7 @@ DECLARE_INSTANCE_CHECKER(PLC80280000State, PLC_80280000, TYPE_PLC_80280000)
 #define REG_ID    0x0
 #define CHIP_ID    0xBA000001
 
-#define EXEC_IN_LOMEM_FILENAME "/home/ardi/Desktop/faks/dipl_projekt/firmware-images/loaded.execlomem.rev"
+#define EXEC_IN_LOMEM_FILENAME "loaded.execlomem.rev" // make sure to include the absolute path to the EXEC_IN_LOMEM file
 #define CORTEX_R5_CPU_NUM 4
 #define MAX_FILE_SIZE_BYTES 30720
 int copied = 0;
